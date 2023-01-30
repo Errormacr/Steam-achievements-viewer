@@ -11,8 +11,7 @@ import requests
 from concurrent import futures
 
 
-
-def convertToPNG(im):
+def convertToPNG(im: Image) -> Image:
     with io.BytesIO() as f:
         im.save(f, format='PNG')
         return f.getvalue()
@@ -53,20 +52,39 @@ def get_games_json(key, user):
 
 
 def get_game_stats(ip, key, user, lg):
-    res = requests.get(
-        f'http://api.steampowered.com/ISteamUserStats/GetPlayerAchievements/v0001/?appid={ip}&key={key}&steamid={user}&l={lg}')
-    sd = res.json()
-    res = requests.get(
-        f"http://api.steampowered.com/ISteamUserStats/GetGlobalAchievementPercentagesForApp/v0002/?gameid={ip}&format=json")
-    sd_percentage = res.json()
-    res = requests.get(
-        f"https://api.steampowered.com/ISteamUserStats/GetSchemaForGame/v2/?appid={ip}&key={key}&l={lg}")
-    sd_desc = res.json()
-    res = requests.get(
-        f'http://api.steampowered.com/ISteamUserStats/GetUserStatsForGame/v0002/?appid={ip}&key={key}&steamid={user}')
-    sd_stats = res.json()
+    b = True
+    while b:
+        try:
+            res = requests.get(
+                f'http://api.steampowered.com/ISteamUserStats/GetPlayerAchievements/v0001/?appid={ip}&key={key}&steamid={user}&l={lg}')
+            sd = res.json()
+            b = False
+        except:
+            sleep(0.01)
+    b = True
+    while b:
+        try:
+            res = requests.get(
+                f"http://api.steampowered.com/ISteamUserStats/GetGlobalAchievementPercentagesForApp/v0002/?gameid={ip}&format=json")
+            sd_percentage = res.json()
+            b = False
+        except:
+            sleep(0.01)
+    b = True
+    while b:
+        try:
+            res = requests.get(
+                f"https://api.steampowered.com/ISteamUserStats/GetSchemaForGame/v2/?appid={ip}&key={key}&l={lg}")
+            sd_desc = res.json()
+            b = False
+        except:
+            sleep(0.01)
+
     stats = sd['playerstats']
     try:
+        res = requests.get(
+            f'http://api.steampowered.com/ISteamUserStats/GetUserStatsForGame/v0002/?appid={ip}&key={key}&steamid={user}')
+        sd_stats = res.json()
         sd_stats = sd_stats['playerstats']['stats']
     except:
         sd_stats = None
@@ -98,7 +116,7 @@ def get_game_stats(ip, key, user, lg):
         for i in ach_list_tsr:
             try:
                 if ach_list_tsr[q][0] not in ach_api:
-                    ach_list_per.append([ach_list_per[q][0],0])
+                    ach_list_per.append([ach_list_per[q][0], 0])
                     ach_list_per = sorted(ach_list_per)
                     print(len(ach_list_per))
             except:
@@ -137,7 +155,7 @@ def fetch_img(url, used_id=None, session=None, size=(64, 64), to_ach_lay=False):
             r = session.get(urls, timeout=60., stream=True).raw
         else:
             r = requests.get(urls, timeout=60., stream=True).raw
-        return convertToPNG(Image.open(r).resize(size)), url[4], url[0], url[2], url[3]
+        return convertToPNG(Image.open(r).resize(size)), url[4], url[0], url[2], url[3], url[8]
     if len(url) == 2:
         url = url[0]
     elif len(url) == 5:
@@ -165,8 +183,6 @@ def fetch_all_img(urls, session=requests.session(), threads=16, size=(64, 64), u
 
 
 def fetch_game(i, key, user, lg):
-    if i['appid'] == 304930 or i['name']=='Unturned':
-        pass
     st = get_game_stats(i['appid'], key, user, lg)
     if st and st is not None:
         return {"name": st[0], "ach": st[1], "appid": i['appid'],

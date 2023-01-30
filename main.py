@@ -3,7 +3,6 @@ import datetime
 import sqlite3
 import webbrowser
 from concurrent import futures
-from io import BytesIO
 
 import PySimpleGUI as sg
 import requests
@@ -11,13 +10,13 @@ from PIL import Image
 
 from post_get import get_steamId_by_name, fetch_all_games, fetch_all_img, \
     fetch_games_bd, get_games_json, get_game_stats, recently_update, \
-    get_user_sum
+    get_user_sum, convertToPNG
 
 # https://steamcommunity.com/profiles/76561198820929267
 # МОЙ 76561198126403886
 # 76561198286183724
 
-key_f = open('key.ini','r')
+key_f = open('key.ini', 'r')
 key = key_f.readline()
 key_f.close()
 ach_data = None
@@ -47,15 +46,15 @@ d = ['Black', 'BlueMono', 'BluePurple', 'BrightColors', 'BrownBlue', 'Dark', 'Da
      'Python', 'PythonPlus', 'Reddit', 'Reds', 'SandyBeach', 'SystemDefault', 'SystemDefault1', 'SystemDefaultForReal',
      'Tan', 'TanBlue', 'TealMono', 'Topanga']
 # Settings for you to modify are the size of the element, the circle width & color and the font for the % complete
-GRAPH_SIZE = (75 , 75)          # this one setting drives the other settings
+GRAPH_SIZE = (75, 75)  # this one setting drives the other settings
 CIRCLE_LINE_WIDTH, LINE_COLOR = 3, 'black'
 TEXT_FONT = 'Courier'
 
-
 # Computations based on your settings above
-TEXT_HEIGHT = GRAPH_SIZE[0]//4
-TEXT_LOCATION = (GRAPH_SIZE[0]//2, GRAPH_SIZE[1]//2)
+TEXT_HEIGHT = GRAPH_SIZE[0] // 4
+TEXT_LOCATION = (GRAPH_SIZE[0] // 2, GRAPH_SIZE[1] // 2)
 TEXT_COLOR = LINE_COLOR
+
 
 # DarkGrey2 , BrightColors ,GrayGrayGray
 def update_meter(graph_elem, percent_complete):
@@ -67,18 +66,14 @@ def update_meter(graph_elem, percent_complete):
     :type percent_complete:         float | int
     """
     graph_elem.erase()
-    arc_length = percent_complete/100*360+.9
+    arc_length = percent_complete / 100 * 360 + .9
     if arc_length >= 360:
         arc_length = 359.9
-    graph_elem.draw_arc((CIRCLE_LINE_WIDTH, GRAPH_SIZE[1] - CIRCLE_LINE_WIDTH), (GRAPH_SIZE[0] - CIRCLE_LINE_WIDTH, CIRCLE_LINE_WIDTH),
-                   arc_length, 0, 'arc', arc_color=LINE_COLOR, line_width=CIRCLE_LINE_WIDTH)
+    graph_elem.draw_arc((CIRCLE_LINE_WIDTH, GRAPH_SIZE[1] - CIRCLE_LINE_WIDTH),
+                        (GRAPH_SIZE[0] - CIRCLE_LINE_WIDTH, CIRCLE_LINE_WIDTH),
+                        arc_length, 0, 'arc', arc_color=LINE_COLOR, line_width=CIRCLE_LINE_WIDTH)
     percent = percent_complete
-    graph_elem.draw_text(f'{percent}%', TEXT_LOCATION, font=(TEXT_FONT, -TEXT_HEIGHT+2), color=TEXT_COLOR)
-
-def convertToPNG(im):
-    with BytesIO() as f:
-        im.save(f, format='PNG')
-        return f.getvalue()
+    graph_elem.draw_text(f'{percent}%', TEXT_LOCATION, font=(TEXT_FONT, -TEXT_HEIGHT + 2), color=TEXT_COLOR)
 
 
 last_aches = []
@@ -100,7 +95,7 @@ def get_last_ach(games, threads=8):
             pass
 
 
-def get_ach_quantity():
+def get_ach_quantity(ach_data=ach_data):
     data = ach_data
     quantity = 0
     for i in data:
@@ -124,7 +119,7 @@ def get_percent_at_game(ach_list):
     return perc, achived, gain, ach_all
 
 
-def get_percen_at_js():
+def get_percen_at_js(ach_data=ach_data):
     try:
         data = ach_data
         per = []
@@ -139,7 +134,7 @@ def get_percen_at_js():
 
 
 def sort_by_key(key, list, rev=False):
-    list = sorted(list, key=lambda x: 1 if x[key] == 'получено' else 0 if x[key] == 'не получено' else x[key],
+    list = sorted(list, key=lambda x: 1 if x[key] == 'Получено' else 0 if x[key] == 'Не получено' else x[key],
                   reverse=rev)
     return list
 
@@ -150,23 +145,28 @@ def sort_by_time(key, list, rev=False):
     return list
 
 
+def get_aches_from_bd(lis: str, appid=None):
+    s = lis.replace('[[', '[').replace(']]', ']').replace('], [', '] [').split('] [')
+    ach = []
+    for j in s:
+        if j.find(']') < len(j) - 2:
+            j += ']'
+        if appid:
+            achiv = ast.literal_eval(('[' + j).replace('[[', '[').replace(' ]', ''))
+            achiv.append(appid)
+            ach.append(achiv)
+        else:
+            ach.append(ast.literal_eval(('[' + j).replace('[[', '[').replace(' ]', '')))
+    return ach
+
+
 def get_ach_from_bd(user):
     global last_aches
     last_aches = []
     conn = sqlite3.connect('Steam_Ach_View.db')
     cursor = conn.cursor()
-    game = []
-    for i in cursor.execute(f"SELECT * FROM game_user WHERE user_id={user}"):
-        s = i[2].replace('[[', '[').replace(']]', ']').replace('], [', '] [').split('] [')
-        ach = []
-        for j in s:
-            if j.find(']') < len(j) - 2:
-                j += ']'
-            ach.append(ast.literal_eval(('[' + j).replace('[[', '[').replace(' ]', '')))
-        stats = 'Нет'
-        if i[3] != 'None':
-            stats = i[3]
-        game.append([i[0], ach, stats])
+    game = [[i[0], get_aches_from_bd(i[2]), 'Нет' if i[3] == 'None' else i[3]] for i in
+            cursor.execute(f"SELECT * FROM game_user WHERE user_id={user}")]
     get_last_ach(game)
     last_aches = sort_by_time(4, last_aches, True)
     conn.close()
@@ -176,24 +176,26 @@ def get_ach_from_bd(user):
 def get_ach_img(js_of_game):
     conn = sqlite3.connect("Steam_Ach_View.db")
     cursor = conn.cursor()
+
     def appid_from_url(url):
         idr = url[0][0]
         idr = idr[idr.find('apps/') + 5:]
         idr = idr[:idr.find('/')]
         return idr
-    def update_ins(list_url,list_ach,str_img):
+
+    def update_ins(list_url, list_ach, str_img):
         for i in fetch_all_img(list_url):
             idr = appid_from_url(i)
             try:
 
                 cursor.execute(f"insert into achivments (game_id,ach_id,{str_img}) values(?,?,?)",
                                (idr, i[0][1], i[1]))
-                conn.commit()
             except:
                 cursor.execute(f"update achivments set {str_img} =? where game_id = ? and ach_id = ?",
                                (i[1], idr, i[0][1]))
-                conn.commit()
+            conn.commit()
             list_ach.append([i[0], i[1]])
+
     lis = []
     urls = []
     urls_n = []
@@ -204,23 +206,20 @@ def get_ach_img(js_of_game):
         check = 'no'
         for j in cursor.execute(f'select * from achivments where game_id = {i[-1]} and ach_id = "{i[-2]}"'):
             if i[1] and j[2] is not None:
-                lis.append([i[0], 'получено', i[2], i[3], i[4], j[2]])
+                lis.append([i[0], 'Получено', i[2], i[3], i[4], j[2], i[-1]])
                 check = "se"
             elif not i[1] and j[3] is not None:
-                lis.append([i[0], 'не получено', i[2], i[3], i[4], j[3]])
+                lis.append([i[0], 'Не получено', i[2], i[3], i[4], j[3], i[-1]])
                 check = "se"
 
         if check == 'no':
-            if len(i) == 6:
-                lis.append(i)
-            else:
-                if i[1] == 1:
-                    urls.append([i[5], i[7]])
-                elif i[1] == 0:
-                    urls_n.append([i[6], i[7]])
-                to_do.append(i)
-    update_ins(urls,ach_ico,'getet_img')
-    update_ins(urls_n,n_ach_ico,'not_getet_img')
+            if i[1] == 1:
+                urls.append([i[5], i[7]])
+            elif i[1] == 0:
+                urls_n.append([i[6], i[7]])
+            to_do.append(i)
+    update_ins(urls, ach_ico, 'getet_img')
+    update_ins(urls_n, n_ach_ico, 'not_getet_img')
     conn.close()
     for i in to_do:
         if i[1]:
@@ -228,13 +227,13 @@ def get_ach_img(js_of_game):
                 if j[0][0] == i[5]:
                     achiv = j[1]
                     break
-            lis.append([i[0], 'получено', i[2], i[3], i[4], achiv])
+            lis.append([i[0], 'Получено', i[2], i[3], i[4], achiv, i[-1]])
         else:
             for j in n_ach_ico:
                 if j[0][0] == i[6]:
                     achiv = j[1]
                     break
-            lis.append([i[0], 'не получено', i[2], i[3], i[4], achiv])
+            lis.append([i[0], 'Не получено', i[2], i[3], i[4], achiv, i[-1]])
     return lis
 
 
@@ -265,9 +264,7 @@ def get_lis_ach_img_games():
         games.append([int(i[0]), name, round(game_data[0], 2),
                       game_data[2], game_data[3] - game_data[2], game_data[3], i, date, i[2]])
     games = sort_by_key(0, games)
-    urls = []
-    for i in data:
-        urls.append(f"https://steamcdn-a.akamaihd.net/steam/apps/{i[0]}/capsule_sm_120.jpg")
+    urls = [f"https://steamcdn-a.akamaihd.net/steam/apps/{i[0]}/capsule_sm_120.jpg" for i in data]
     conn.close()
     logo = fetch_all_img(urls, size=(133, 50), used_id=used_id)
     logo_with_appid = []
@@ -278,13 +275,11 @@ def get_lis_ach_img_games():
     logo_with_appid = sort_by_key(0, logo_with_appid)
     conn = sqlite3.connect('Steam_Ach_View.db')
     cursor = conn.cursor()
-    q = 0
     game_to_bd = []
-    for i in games:
+    for q, i in enumerate(games):
         if i[0] not in used_id:
             game_to_bd.append([i[0], logo_with_appid[q][1], f'{i[2]} {i[3]} {i[4]} {i[5]} {i[7]}'])
         i.append(logo_with_appid[q][1])
-        q += 1
     to_simp = fetch_games_bd(game_to_bd, key, user, lg)
     for i in to_simp:
         cursor.execute("INSERT INTO games VALUES (?,?,?)", (i[0], i[1], i[2]))
@@ -312,7 +307,7 @@ def update_one_game(js):
     return js
 
 
-def get_list_of_name_ach_games(win=None):  # главная функция
+def get_list_of_name_ach_games(win=None, user=user):  # главная функция
     conn = sqlite3.connect('Steam_Ach_View.db')
     cursor = conn.cursor()
     js = get_games_json(key=key, user=user)
@@ -348,10 +343,10 @@ def get_list_of_name_ach_games(win=None):  # главная функция
 
 
 def start_wind(from_opt=False):
-    global key, ach_data, user, theme, max_game, max_ach,TEXT_COLOR,LINE_COLOR
+    global key, ach_data, user, theme, max_game, max_ach, TEXT_COLOR, LINE_COLOR
     try:
         f = open('id.ini', 'r')
-        user = f.readline()
+        user = int(f.readline())
         theme = f.readline()
         theme = theme[:len(theme) - 1]
         sg.theme(theme)
@@ -359,7 +354,7 @@ def start_wind(from_opt=False):
         max_ach = int(f.readline())
         color_perc = f.readline()
         if color_perc:
-            TEXT_COLOR=LINE_COLOR=color_perc
+            TEXT_COLOR = LINE_COLOR = color_perc
         f.close()
         if not from_opt:
             sg.Popup('Происходит обновление игр в которые вы играли за последние 2 недели', auto_close=True,
@@ -373,11 +368,7 @@ def start_wind(from_opt=False):
     main_wind()
 
 
-# except:
-#   options_wind()
-
-
-def write_theme_and_id(theme_v, id_user, max_games_to_show, mach,color_perc):
+def write_theme_and_id(theme_v, id_user, max_games_to_show, mach, color_perc):
     global user, max_ach, max_game
     f = open('id.ini', 'w')
     f.write(str(int(id_user)))
@@ -394,7 +385,7 @@ def write_theme_and_id(theme_v, id_user, max_games_to_show, mach,color_perc):
     f.write('\n')
     f.write(str(color_perc))
 
-    user, max_ach, max_game, LINE_COLOR, TEXT_COLOR = int(id_user), mach, max_games_to_show,color_perc,color_perc
+    user, max_ach, max_game, LINE_COLOR, TEXT_COLOR = int(id_user), mach, max_games_to_show, color_perc, color_perc
     f.close()
 
 
@@ -412,8 +403,10 @@ def options_wind(win_to_clo=None):
     layout = [
         [sg.Combo(values=name, tooltip='Введите steamid или ссылку на ваш профиль', key='id', size=(30, 5),
                   enable_events=True)],
-        [sg.Combo(values=d, key='theme',readonly=True)],
-        [sg.Text('Цвет процентов достижений'), sg.Combo(readonly=True,values=['black','white','yellow','green','blue','orange'],default_value=LINE_COLOR,key='color_perc')],
+        [sg.Combo(values=d, key='theme', readonly=True)],
+        [sg.Text('Цвет процентов достижений'),
+         sg.Combo(readonly=True, values=['black', 'white', 'yellow', 'green', 'blue', 'orange'],
+                  default_value=LINE_COLOR, key='color_perc')],
         [sg.Text('Кол-во показываемых достижений', size=(27, 1)),
          sg.Slider(range=(1, 400), size=(30, 5), orientation='h', default_value=max_ach, key='Mach')],
         [sg.Text('Кол-во показываемых игр', size=(27, 1)),
@@ -459,7 +452,7 @@ def options_wind(win_to_clo=None):
                 user = user_val + '\n'
                 if another_id and check:
                     windows['Progress'].update(visible=True)
-                    get_list_of_name_ach_games(windows)
+                    get_list_of_name_ach_games(windows, user)
                     windows['Progress'].update(visible=False)
                 ach_data = get_ach_from_bd(user)
                 if win_to_clo is not None:
@@ -525,7 +518,8 @@ def main_wind(win_to_close=None):
             elif perc < 2:
                 color_back = '#e56717'
             ach_lay[q].append(sg.Image(data=ach_img_to_lay[_][0], size=(56.25, 56.25), background_color=color_back,
-                                       tooltip=f'{ach_img_to_lay[_][1]}\n{ach_img_to_lay[_][2]}\n{ach_img_to_lay[_][3]}'))
+                                       key=f"appid{ach_img_to_lay[_][5]}beg", enable_events=True,
+                                       tooltip=f'{ach_img_to_lay[_][1]}\n{round(perc, 2)}\n{ach_img_to_lay[_][2]}\n{ach_img_to_lay[_][3]}'))
     except:
         pass
     layout = [[
@@ -539,25 +533,29 @@ def main_wind(win_to_close=None):
             [sg.Button('Список игр с достижениями'), sg.Button('Все достижения'),
              sg.Button('Обновить список игр'),
              sg.Button('Настройки')],
-            [sg.Text(f'Средний процент достижений: {round(get_percen_at_js(), 2)}', key="percent"),sg.Graph(GRAPH_SIZE, (0,0), GRAPH_SIZE, key='-GRAPH-')],
-            [sg.Text(f'Всего достижений: {get_ach_quantity()}', key="ach")],
+            [sg.Text(f'Средний процент достижений: {round(get_percen_at_js(ach_data), 2)}', key="percent"),
+             sg.Graph(GRAPH_SIZE, (0, 0), GRAPH_SIZE, key='-GRAPH-')],
+            [sg.Text(f'Всего достижений: {get_ach_quantity(ach_data)}', key="ach")],
             [sg.ProgressBar(max_value=999, orientation='h', size=(30, 10), key='Progress', visible=False),
              sg.Text(key='Progresstxt')],
         ], border_width=0),
         sg.Frame('', layout=ach_lay, border_width=0)]
     ]
-    use_db = user[:len(user)]
+    use_db = user
     if checked:
         name_db = player_wn[0]
-        use_ava_db = png_data
-        get_list_of_name_ach_games()
+        get_list_of_name_ach_games(user=user)
         ach_data = get_ach_from_bd(user)
         ach_data = ach_data
         cursor.execute('''INSERT INTO users VALUES (?,?,?,?,?,?)''',
-                       (use_db, name_db, use_ava_db, round(get_percen_at_js(), 2), get_ach_quantity(), '  '))
+                       (use_db, name_db, png_data, round(get_percen_at_js(ach_data), 2), get_ach_quantity(ach_data),
+                        '  '))
     else:
+        ach_data = get_ach_from_bd(user)
+        ach_data = ach_data
         cursor.execute("""UPDATE users SET user_percentage=? and user_ach = ? WHERE user_id = ?""",
-                       (round(get_percen_at_js(), 2), get_ach_quantity(), use_db))
+                       (round(get_percen_at_js(ach_data), 2), get_ach_quantity(ach_data), use_db))
+        conn.commit()
 
     conn.commit()
     window_main = sg.Window('Основное окно', layout, size=(1500, 600))
@@ -565,13 +563,14 @@ def main_wind(win_to_close=None):
         win_to_close.close()
     while True:
         event, values = window_main.read(timeout=10)
-        update_meter(window_main['-GRAPH-'], round(get_percen_at_js(), 2))
+        update_meter(window_main['-GRAPH-'], round(get_percen_at_js(ach_data), 2))
         if event == sg.WIN_CLOSED:
             conn.close()
             break
         elif event == 'Все достижения':
             conn.close()
-            show_window_with_ach_game(window_main, [None, last_aches], len(last_aches), to_main=True, sort=-4)
+            show_window_with_ach_game(window_main, [None, last_aches], len(last_aches), to_main=True, sort=-4,
+                                      clickable_achivments=True)
         elif event == 'Список игр с достижениями':
             conn.close()
             show_window_with_ach(window_main)
@@ -581,13 +580,13 @@ def main_wind(win_to_close=None):
             conn.close()
             window_main['Progress'].update(visible=True)
             window_main['Progresstxt'].update(visible=True)
-            get_list_of_name_ach_games(window_main)
+            get_list_of_name_ach_games(window_main, user=user)
             ach_data = get_ach_from_bd(user)
             ach_data = ach_data
             window_main['Progress'].update(visible=False)
             window_main['Progresstxt'].update(visible=False)
-            new_perc = round(get_percen_at_js(), 2)
-            new_ach = get_ach_quantity()
+            new_perc = round(get_percen_at_js(ach_data), 2)
+            new_ach = get_ach_quantity(ach_data)
             window_main["percent"].update(f'steam percent: {new_perc}')
             window_main["ach"].update(f'Всего достижений: {new_ach}')
             conn = sqlite3.connect('Steam_Ach_View.db')
@@ -600,6 +599,10 @@ def main_wind(win_to_close=None):
         elif event == 'Настройки':
             conn.close()
             options_wind(window_main)
+        elif event.startswith('appid'):
+            appid = int(event[5:event.find('beg')])
+            conn.close()
+            show_window_with_ach_game_from_db(window_main, appid, user)
 
 
 def show_window_with_ach(win_to_close):
@@ -688,7 +691,7 @@ def show_window_with_ach(win_to_close):
 
     layout[1].append(
         sg.Table(values=[], headings=['Статистика', 'Значение'], justification='left', auto_size_columns=False,
-                 def_col_width=30, size=(700, 100), key="TABLE", visible=False))
+                 def_col_width=50, size=(700, 150), key="TABLE", visible=False))
 
     window_ach = sg.Window('Игры с достижениями', layout=layout, size=(1500, 700), finalize=True)
     table = window_ach["TABLE"]
@@ -717,8 +720,8 @@ def show_window_with_ach(win_to_close):
                 if len(str(value)) > len(mz):
                     mz = str(value)
             window_ach['TABLE'].update(values=table_stats_value, visible=True)
-            table_widget.column('Статистика', width=7 * len(ms) + 40 * int(len(ms) < 20))
-            table_widget.column('Значение', width=12 * len(mz) + 10 * int(len(mz) < 3))
+            table_widget.column('Статистика', width=9 * len(ms) + 40 * int(len(ms) < 20))
+            table_widget.column('Значение', width=18 * len(mz) + 10 * int(len(mz) < 3))
         elif event == 'Назад':
             main_wind(window_ach)
         elif event == 'Предыдущая страница':
@@ -789,8 +792,19 @@ def show_window_with_ach(win_to_close):
                 viewed = update_window(window_ach, list(reversed(q_list)), 0, games)
 
 
+def show_window_with_ach_game_from_db(window, appid, user):
+    conn = sqlite3.connect('Steam_Ach_View.db')
+    cursor = conn.cursor()
+    game = cursor.execute(
+        f"select game_id, achivments, stats from game_user where game_id = {appid} and user_id = {user}").fetchone()
+    print(appid)
+    game = [game[0], get_aches_from_bd(game[1], game[0]), game[2]]
+    conn.close()
+    show_window_with_ach_game(window, game, get_percent_at_game(game[1])[2], to_main=True)
+
+
 def show_window_with_ach_game(win_to_close, js_of_game, getet_ach, game_id=None, lis_per=None, sort=None,
-                              to_main=None):
+                              to_main=False, clickable_achivments=False):
     def percent(games):
         perc = round(games[3], 2)
         if perc > 59.9:
@@ -815,7 +829,7 @@ def show_window_with_ach_game(win_to_close, js_of_game, getet_ach, game_id=None,
                 viewed = len(lis) - i - 1
             perc, color_back, desc = percent(lis[i + viewed])
             wind[f"img{i}"].update(data=lis[i + viewed][5], size=(64, 64))
-            wind["kolvo"].update(f"{viewed}-{viewed + len(q)}")
+            wind["count"].update(f"{viewed}-{viewed + len(q)}")
             wind[f"img{i}"].ParentRowFrame.config(background=color_back)
             wind[f"fr{i}"].Widget.config(background=color_back)
             wind[f"fr{i}"].Widget.config(highlightbackground=color_back)
@@ -828,13 +842,15 @@ def show_window_with_ach_game(win_to_close, js_of_game, getet_ach, game_id=None,
 
     if lis_per is None and sort is None:
         lis = sort_by_key(1, sort_by_key(3, js_of_game[1], True), True)
-        for i in lis:
-            if i[-1] == game_id:
-                break
-            i.append(game_id)
+        if game_id:
+            for i in lis:
+                if i[-1] == game_id:
+                    break
+                i.append(game_id)
     elif sort == -4 and to_main:
         lis = js_of_game[1]
     lis = get_ach_img(lis)
+    print(lis[0][1:])
     to_col_add = [sg.Text("logo", size=(9, 1)),
                   sg.Text('Есть?', size=(11, 1), enable_events=True),
                   sg.Text('Имя', size=(30, 1), enable_events=True),
@@ -849,7 +865,8 @@ def show_window_with_ach_game(win_to_close, js_of_game, getet_ach, game_id=None,
     for i in range(len(lis) - viewed):
         perc, color_back, desc = percent(lis[i + viewed])
         column_data.append(
-            [sg.Frame('', [[sg.Image(data=lis[i + viewed][5], size=(64, 64), key=f"img{q}")]],
+            [sg.Frame('', [
+                [sg.Image(data=lis[i + viewed][5], size=(64, 64), key=f"img{q}", enable_events=clickable_achivments)]],
                       background_color=color_back, key=f'fr{q}'),
              sg.Text('\n' + str(lis[i + viewed][1]), size=(12, 4), key=f"have{q}"),
              sg.Text('\n' + str(lis[i + viewed][0]), size=(30, 4), key=f"name{q}"),
@@ -864,7 +881,7 @@ def show_window_with_ach_game(win_to_close, js_of_game, getet_ach, game_id=None,
     pred_sled = [sg.Button('<-----------', key="Предыдущая страница"),
                  sg.Button('----------->', key="Следующая страница")]
     buttons = [sg.Button('Назад'), sg.Text(f'Полученных достижений {getet_ach}'),
-               sg.Text(f'{viewed + 1}-{curent}', key="kolvo")]
+               sg.Text(f'{viewed + 1}-{curent}', key="count")]
     if js_of_game[0]:
         buttons.append(sg.Button('Обновить'))
     layout = [buttons,
@@ -888,6 +905,7 @@ def show_window_with_ach_game(win_to_close, js_of_game, getet_ach, game_id=None,
         if event == sg.WIN_CLOSED:
             break
         elif event == 'Назад':
+            conn.close()
             if to_main:
                 main_wind(window)
             else:
@@ -964,6 +982,10 @@ def show_window_with_ach_game(win_to_close, js_of_game, getet_ach, game_id=None,
                 lis = sort_by_key(4, lis, True)
                 sort = -4
                 update_wind(window, viewed, q_list, lis)
+        elif clickable_achivments and event.startswith("img"):
+            conn.close()
+            appid = lis[int(event[3:]) + viewed][-1]
+            show_window_with_ach_game_from_db(window, appid, user)
 
 
 if __name__ == '__main__':
