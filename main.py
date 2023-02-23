@@ -493,10 +493,9 @@ def main_wind(win_to_close=None):
     else:
         name_db = data_from_db[1]
         png_data = data_from_db[2]
-    ach_img_to_lay = []
+
     img = fetch_all_img(last_aches[:42], size=(48, 48), to_ach_lay=True)
-    for i in img:
-        ach_img_to_lay.append(i[1])
+    ach_img_to_lay = [i[1] for i in img]
     ach_img_to_lay = sort_by_time(1, ach_img_to_lay, rev=True)
     q = -1
     ach_lay = []
@@ -517,9 +516,16 @@ def main_wind(win_to_close=None):
                 color_back = '#b23aee'
             elif perc < 2:
                 color_back = '#e56717'
+            desk = ach_img_to_lay[_][3]
+            desk_p = ""
+            while len(desk) > 80:
+                space = desk[60:].find(" ") + 60
+                desk_p = desk_p + desk[:space] + "\n"
+                desk = desk[space:]
+            desk_p += desk
             ach_lay[q].append(sg.Image(data=ach_img_to_lay[_][0], size=(56.25, 56.25), background_color=color_back,
                                        key=f"appid{ach_img_to_lay[_][5]}beg", enable_events=True,
-                                       tooltip=f'{ach_img_to_lay[_][1]}\n{round(perc, 2)}\n{ach_img_to_lay[_][2]}\n{ach_img_to_lay[_][3]}'))
+                                       tooltip=f'{ach_img_to_lay[_][1]}\n{round(perc, 2)} %\n{ach_img_to_lay[_][2]}\n{desk_p}'))
     except:
         pass
     layout = [[
@@ -647,20 +653,31 @@ def show_window_with_ach(win_to_close):
 
     def update_window(wind, q, viewed, games):
 
-        if q[0] + viewed > len(games):
-            viewed = len(games) - q[0] - 1
-        for i in q:
-            stats, txt_col, txt_st_col = perc(games[i + viewed])
-            wind[f'img{i}'].update(data=games[i + viewed][9], size=(133, 50))
-            wind[f"name{i}"].update(games[i + viewed][1], text_color=txt_col)
-            wind[f"progress{i}"].update(bar_color=(txt_col, 'black'))
-            wind[f"progress{i}"].update(games[i + viewed][2])
-            wind[f"progress{i}"].set_tooltip(games[i + viewed][2])
-            wind[f"getet{i}"].update(games[i + viewed][3], text_color=txt_col)
-            wind[f"to_done{i}"].update(games[i + viewed][4], text_color=txt_col)
-            wind[f"all{i}"].update(games[i + viewed][5], text_color=txt_col)
-            wind[f"stats{i}"].update(stats, text_color=txt_st_col)
-        return q[-1] + viewed
+        if q[-1] + viewed > len(games):
+            viewed = len(games) - q[-1] - 1
+        for i in range((len(q)//2)+1):
+            print((i,viewed,i+viewed))
+            stats, txt_col, txt_st_col = perc(games[q[i] + viewed])
+            wind[f'img{q[i]}'].update(data=games[q[i] + viewed][9], size=(133, 50))
+            wind[f"name{q[i]}"].update(games[q[i] + viewed][1], text_color=txt_col)
+            wind[f"progress{q[i]}"].update(bar_color=(txt_col, 'black'))
+            wind[f"progress{q[i]}"].update(games[q[i] + viewed][2])
+            wind[f"progress{q[i]}"].set_tooltip(games[q[i] + viewed][2])
+            wind[f"getet{q[i]}"].update(games[q[i] + viewed][3], text_color=txt_col)
+            wind[f"to_done{q[i]}"].update(games[q[i] + viewed][4], text_color=txt_col)
+            wind[f"all{q[i]}"].update(games[q[i] + viewed][5], text_color=txt_col)
+            wind[f"stats{q[i]}"].update(stats, text_color=txt_st_col)
+            stats, txt_col, txt_st_col = perc(games[q[-i-1] + viewed])
+            wind[f'img{q[-i-1]}'].update(data=games[q[-i-1] + viewed][9], size=(133, 50))
+            wind[f"name{q[-i-1]}"].update(games[q[-i-1] + viewed][1], text_color=txt_col)
+            wind[f"progress{q[-i-1]}"].update(bar_color=(txt_col, 'black'))
+            wind[f"progress{q[-i-1]}"].update(games[q[-i-1] + viewed][2])
+            wind[f"progress{q[-i-1]}"].set_tooltip(games[q[-i-1] + viewed][2])
+            wind[f"getet{q[-i-1]}"].update(games[q[-i-1] + viewed][3], text_color=txt_col)
+            wind[f"to_done{q[-i-1]}"].update(games[q[-i-1] + viewed][4], text_color=txt_col)
+            wind[f"all{q[-i-1]}"].update(games[q[-i-1] + viewed][5], text_color=txt_col)
+            wind[f"stats{q[-i-1]}"].update(stats, text_color=txt_st_col)
+        return q[0] + viewed
 
     q_list = []
     for i in range(len(games) - viewed):
@@ -729,67 +746,67 @@ def show_window_with_ach(win_to_close):
                 viewed -= max_game
                 if viewed < 0:
                     viewed = 0
-                viewed = update_window(window_ach, list(reversed(q_list)), viewed, games)
+                viewed = update_window(window_ach, list(q_list), viewed, games)
         elif event == 'Следующая страница':
             if curent != 0 and curent != len(games):
                 viewed += max_game
                 if viewed > len(games):
                     viewed = len(games) - q_list[len(q_list) - 1]
-                viewed = update_window(window_ach, list(reversed(q_list)), viewed, games)
+                viewed = update_window(window_ach, list(q_list), viewed, games)
         elif event == 'name':
             if sort == 1:
                 games = sort_by_key(1, games, True)
                 sort = ''
-                viewed = update_window(window_ach, list(reversed(q_list)), 0, games)
+                viewed = update_window(window_ach, list(q_list), 0, games)
             else:
                 games = sort_by_key(1, games)
                 sort = 1
-                viewed = update_window(window_ach, list(reversed(q_list)), 0, games)
+                viewed = update_window(window_ach, list(q_list), 0, games)
         elif event == 'procent':
             if sort == 2:
                 games = sort_by_key(2, sort_by_key(1, games))
                 sort = -2
-                viewed = update_window(window_ach, list(reversed(q_list)), 0, games)
+                viewed = update_window(window_ach, list(q_list), 0, games)
             else:
                 games = sort_by_key(2, sort_by_key(1, games), True)
                 sort = 2
-                viewed = update_window(window_ach, list(reversed(q_list)), 0, games)
+                viewed = update_window(window_ach, list(q_list), 0, games)
         elif event == 'Полученные':
             if sort == 3:
                 games = sort_by_key(3, sort_by_key(1, games))
                 sort = -3
-                viewed = update_window(window_ach, list(reversed(q_list)), 0, games)
+                viewed = update_window(window_ach, list(q_list), 0, games)
             else:
                 games = sort_by_key(3, sort_by_key(1, games), True)
                 sort = 3
-                viewed = update_window(window_ach, list(reversed(q_list)), 0, games)
+                viewed = update_window(window_ach, list(q_list), 0, games)
         elif event == 'не полученные':
             if sort == 4:
                 games = sort_by_key(4, sort_by_key(1, games))
                 sort = -4
-                viewed = update_window(window_ach, list(reversed(q_list)), 0, games)
+                viewed = update_window(window_ach, list(q_list), 0, games)
             else:
                 games = sort_by_key(4, sort_by_key(1, games), True)
                 sort = 4
-                viewed = update_window(window_ach, list(reversed(q_list)), 0, games)
+                viewed = update_window(window_ach, list(q_list), 0, games)
         elif event == 'всего':
             if sort == 5:
                 games = sort_by_key(5, sort_by_key(1, games))
                 sort = -5
-                viewed = update_window(window_ach, list(reversed(q_list)), 0, games)
+                viewed = update_window(window_ach, list(q_list), 0, games)
             else:
                 games = sort_by_key(5, sort_by_key(1, games), True)
                 sort = 5
-                viewed = update_window(window_ach, list(reversed(q_list)), 0, games)
+                viewed = update_window(window_ach, list(q_list), 0, games)
         elif event == 'статистика':
             if sort == 8:
                 games = sort_by_key(8, sort_by_key(1, games), True)
                 sort = -8
-                viewed = update_window(window_ach, list(reversed(q_list)), 0, games)
+                viewed = update_window(window_ach, list(q_list), 0, games)
             else:
                 games = sort_by_key(8, sort_by_key(8, games))
                 sort = 8
-                viewed = update_window(window_ach, list(reversed(q_list)), 0, games)
+                viewed = update_window(window_ach, list(q_list), 0, games)
 
 
 def show_window_with_ach_game_from_db(window, appid, user):
@@ -797,7 +814,6 @@ def show_window_with_ach_game_from_db(window, appid, user):
     cursor = conn.cursor()
     game = cursor.execute(
         f"select game_id, achivments, stats from game_user where game_id = {appid} and user_id = {user}").fetchone()
-    print(appid)
     game = [game[0], get_aches_from_bd(game[1], game[0]), game[2]]
     conn.close()
     show_window_with_ach_game(window, game, get_percent_at_game(game[1])[2], to_main=True)
@@ -805,6 +821,7 @@ def show_window_with_ach_game_from_db(window, appid, user):
 
 def show_window_with_ach_game(win_to_close, js_of_game, getet_ach, game_id=None, lis_per=None, sort=None,
                               to_main=False, clickable_achivments=False):
+
     def percent(games):
         perc = round(games[3], 2)
         if perc > 59.9:
@@ -850,7 +867,6 @@ def show_window_with_ach_game(win_to_close, js_of_game, getet_ach, game_id=None,
     elif sort == -4 and to_main:
         lis = js_of_game[1]
     lis = get_ach_img(lis)
-    print(lis[0][1:])
     to_col_add = [sg.Text("logo", size=(9, 1)),
                   sg.Text('Есть?', size=(11, 1), enable_events=True),
                   sg.Text('Имя', size=(30, 1), enable_events=True),
